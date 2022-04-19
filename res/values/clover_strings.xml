@@ -54,4 +54,8 @@
     <string name="drawer_open_keyboard_title">Swipe to start search</string>
     <string name="drawer_open_keyboard_summary">Open keyboard whenever app drawer becomes visible</string>
 
+    <!-- Restart launcher -->
+    <string name="pref_restart_title">Restart</string>
+    <string name="pref_restart_summary">Restart the launcher manually to apply any pending settings</string>
+
 </resources>
