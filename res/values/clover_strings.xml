@@ -48,4 +48,8 @@
     <string name="pref_sleep_gesture_title">Double tap to sleep</string>
     <string name="pref_sleep_gesture_summary">Double tap on empty space for screen off</string>
 
+    <!-- Search bar -->
+    <string name="label_search">Search</string>
+    <string name="pref_show_hotseat_search_title">Show hotseat search bar</string>
+
 </resources>
