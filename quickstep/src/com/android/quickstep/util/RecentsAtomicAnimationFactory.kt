@@ -230,7 +230,7 @@ CONTAINER : StatefulContainer<STATE_TYPE> {
                 config.setInterpolator(ANIM_OVERVIEW_FADE, OVERSHOOT_1_2)
 
                 // Scale up the recents, if it is not coming from the side
-                if (overview.visibility != View.VISIBLE || overview.contentAlpha == 0f) {
+                if (overview != null && overview.visibility != View.VISIBLE || overview.contentAlpha == 0f) {
                     RecentsView.RECENTS_SCALE_PROPERTY[overview] = RECENTS_PREPARE_SCALE
                 }
             }
