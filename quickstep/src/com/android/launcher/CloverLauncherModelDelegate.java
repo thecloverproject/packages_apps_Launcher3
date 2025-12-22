@@ -11,41 +11,37 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 
 import com.android.launcher3.InvariantDeviceProfile;
-import com.android.launcher3.R;
 import com.android.launcher3.dagger.ApplicationContext;
-import com.android.launcher3.model.AllAppsList;
 import com.android.launcher3.model.BgDataModel;
-import com.android.launcher3.model.ModelTaskController;
 import com.android.launcher3.model.QuickstepModelDelegate;
 import com.android.launcher3.model.data.ItemInfo;
-import com.android.launcher3.util.PackageManagerHelper;
 import com.android.launcher3.util.Executors;
+import com.android.launcher3.util.PackageManagerHelper;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 import javax.inject.Named;
 
 public class CloverLauncherModelDelegate extends QuickstepModelDelegate
-    implements SmartspaceSession.OnTargetsAvailableListener {
+        implements SmartspaceSession.OnTargetsAvailableListener {
 
     public static final String TAG = "CloverLauncherModelDelegate";
 
-    public final Context mContext;
+    public static final int SMARTSPACE_CONTAINER_ID = -110; 
 
-    public final Deque mSmartspaceTargets = new LinkedList<List>();
+    private final Context mContext;
+    
+    private final Deque<List<SmartspaceTarget>> mSmartspaceTargets = new LinkedList<>();
 
-    public SmartspaceSession mSmartspaceSession;
+    private SmartspaceSession mSmartspaceSession;
 
     @Inject
     public CloverLauncherModelDelegate(@ApplicationContext Context context,
@@ -65,46 +61,54 @@ public class CloverLauncherModelDelegate extends QuickstepModelDelegate
     @Override
     public void dump(String prefix, FileDescriptor fd, PrintWriter writer, String[] args) {
         writer.println(prefix + "Recent BC Smartspace Targets (most recent first)");
-        if (mSmartspaceTargets.size() == 0) {
-            writer.println(prefix + "   No data\n");
-            return;
-        }
-        mSmartspaceTargets.descendingIterator().forEachRemaining((x) -> {
-            List targets = (List) x;
-            writer.println(prefix + "   Number of targets: " + targets.size());
-            Iterator it = targets.iterator();
-            while (it.hasNext()) {
-                writer.println(prefix + "      " + ((SmartspaceTarget) it.next()));
+        synchronized (mSmartspaceTargets) {
+            if (mSmartspaceTargets.isEmpty()) {
+                writer.println(prefix + "   No data\n");
+                return;
             }
-            writer.println();
-        });
+            mSmartspaceTargets.descendingIterator().forEachRemaining((targets) -> {
+                writer.println(prefix + "   Number of targets: " + targets.size());
+                for (SmartspaceTarget target : targets) {
+                    writer.println(prefix + "      " + target);
+                }
+                writer.println();
+            });
+        }
     }
 
-    public final void destroySmartspaceSession() {
+    private void destroySmartspaceSession() {
         if (mSmartspaceSession != null) {
             mSmartspaceSession.close();
             mSmartspaceSession = null;
         }
     }
 
+    @Override
     public void onTargetsAvailable(List<SmartspaceTarget> targets) {
         List<SmartspaceTarget> list = targets.stream()
-                                             .filter(t -> t.getFeatureType() != 34)
-                                             .collect(Collectors.toList());
-        mSmartspaceTargets.offerLast(list);
-        if (mSmartspaceTargets.size() > 5) {
-            mSmartspaceTargets.pollFirst();
+                .filter(t -> t.getFeatureType() != 34)
+                .collect(Collectors.toList());
+
+        synchronized (mSmartspaceTargets) {
+            mSmartspaceTargets.offerLast(list);
+            if (mSmartspaceTargets.size() > 5) {
+                mSmartspaceTargets.pollFirst();
+            }
         }
+
         mModel.enqueueModelUpdateTask((taskController, dataModel, apps) -> {
-            List<ItemInfo> items = new ArrayList<>(mSmartspaceTargets.size());
+            List<ItemInfo> items = new ArrayList<>(list.size());
+            
             for (SmartspaceTarget target : list) {
                 SmartspaceItem item = new SmartspaceItem();
                 item.setSmartspaceTarget(target);
-                item.container = -110;
+                item.container = SMARTSPACE_CONTAINER_ID;
                 item.itemType = 8;
                 items.add(item);
             }
-            BgDataModel.FixedContainerItems container = new BgDataModel.FixedContainerItems(-110, items);
+            
+            BgDataModel.FixedContainerItems container = 
+                new BgDataModel.FixedContainerItems(SMARTSPACE_CONTAINER_ID, items);
             taskController.bindExtraContainerItems(container);
         });
     }
@@ -134,9 +138,10 @@ public class CloverLauncherModelDelegate extends QuickstepModelDelegate
         }
         Log.d(TAG, "Starting smartspace session for home");
 
-        SmartspaceManager smartspaceManager = (SmartspaceManager) mContext.getSystemService(SmartspaceManager.class);
+        SmartspaceManager smartspaceManager = mContext.getSystemService(SmartspaceManager.class);
         if (smartspaceManager != null) {
-            mSmartspaceSession = smartspaceManager.createSmartspaceSession(new SmartspaceConfig.Builder(mContext, "home").build());
+            mSmartspaceSession = smartspaceManager.createSmartspaceSession(
+                    new SmartspaceConfig.Builder(mContext, "home").build());
             mSmartspaceSession.addOnTargetsAvailableListener(Executors.MODEL_EXECUTOR, this);
             mSmartspaceSession.requestSmartspaceUpdate();
         } else {
@@ -144,7 +149,7 @@ public class CloverLauncherModelDelegate extends QuickstepModelDelegate
         }
     }
 
-    public class SmartspaceItem extends ItemInfo {
+    public static class SmartspaceItem extends ItemInfo {
         public SmartspaceTarget mSmartspaceTarget;
 
         public SmartspaceTarget getSmartspaceTarget() {

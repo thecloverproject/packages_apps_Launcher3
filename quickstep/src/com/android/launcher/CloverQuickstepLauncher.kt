@@ -8,6 +8,7 @@ package com.android.launcher
 
 import android.app.smartspace.SmartspaceTarget
 import android.os.Bundle
+import android.util.Log
 import com.android.launcher.CloverLauncherModelDelegate.SmartspaceItem
 import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.qsb.LauncherUnlockAnimationController
@@ -34,15 +35,23 @@ class CloverQuickstepLauncher : QuickstepLauncher() {
 
     override fun onCreate(bundle: Bundle?) {
         super.onCreate(bundle)
-        SystemUiProxy.INSTANCE.get(this).setLauncherUnlockAnimationController(
-            this.javaClass.simpleName,
-            mUnlockAnimationController
-        )
+        try {
+            SystemUiProxy.INSTANCE.get(this)?.setLauncherUnlockAnimationController(
+                this.javaClass.simpleName,
+                mUnlockAnimationController
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting unlock animation controller", e)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        SystemUiProxy.INSTANCE.get(this).setLauncherUnlockAnimationController("null", null)
+        try {
+            SystemUiProxy.INSTANCE.get(this)?.setLauncherUnlockAnimationController("null", null)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear unlock animation controller", e)
+        }
     }
 
     override fun onOverlayVisibilityChanged(visible: Boolean) {
@@ -56,7 +65,7 @@ class CloverQuickstepLauncher : QuickstepLauncher() {
     }
 
     override fun bindExtraContainerItems(container: BgDataModel.FixedContainerItems) {
-        if (container.containerId == -110) {
+        if (container.containerId == CloverLauncherModelDelegate.SMARTSPACE_CONTAINER_ID) {
             val targets = container.items
                 .filterIsInstance<SmartspaceItem>()
                 .map { it.smartspaceTarget }
