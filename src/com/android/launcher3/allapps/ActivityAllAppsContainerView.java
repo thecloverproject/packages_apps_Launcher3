@@ -75,6 +75,7 @@ import com.android.launcher3.DropTarget.DragObject;
 import com.android.launcher3.Flags;
 import com.android.launcher3.Insettable;
 import com.android.launcher3.InsettableFrameLayout;
+import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.allapps.BaseAllAppsAdapter.AdapterItem;
@@ -816,7 +817,11 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             mTabsProtectionAlpha = tabsAlpha;
             invalidateHeader();
         }
-        getSearchView().setBackgroundResource(R.drawable.bg_all_apps_searchbox);
+        if (!LauncherPrefs.ALLAPPS_THEMED_ICONS.get(getContext())) {
+            getSearchView().setBackgroundResource(R.drawable.bg_all_apps_searchbox_google);
+        } else {
+            getSearchView().setBackgroundResource(R.drawable.bg_all_apps_searchbox_google_themed);
+        }
         if (mSearchUiManager.getEditText() == null) {
             return;
         }

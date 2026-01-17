@@ -18,20 +18,26 @@ package com.android.launcher3.allapps.search;
 import static android.view.View.MeasureSpec.EXACTLY;
 import static android.view.View.MeasureSpec.getSize;
 import static android.view.View.MeasureSpec.makeMeasureSpec;
-
-import static com.android.launcher3.Utilities.prefixTextWithIcon;
 import static com.android.launcher3.icons.IconNormalizer.ICON_VISIBLE_AREA_FACTOR;
 
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.text.Selection;
 import android.text.SpannableStringBuilder;
 import android.text.method.TextKeyListener;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup.MarginLayoutParams;
+
+import androidx.core.content.ContextCompat;
 
 import com.android.launcher3.DeviceProfile;
 import com.android.launcher3.ExtendedEditText;
@@ -42,6 +48,7 @@ import com.android.launcher3.allapps.AllAppsStore;
 import com.android.launcher3.allapps.BaseAllAppsAdapter.AdapterItem;
 import com.android.launcher3.allapps.PrivateProfileManager;
 import com.android.launcher3.allapps.SearchUiManager;
+import com.android.launcher3.graphics.ThemeManager;
 import com.android.launcher3.search.SearchCallback;
 import com.android.launcher3.util.ApiWrapper;
 import com.android.launcher3.views.ActivityContext;
@@ -53,7 +60,7 @@ import java.util.ArrayList;
  */
 public class AppsSearchContainerLayout extends ExtendedEditText
         implements SearchUiManager, SearchCallback<AdapterItem>,
-        AllAppsStore.OnUpdateListener, Insettable {
+        AllAppsStore.OnUpdateListener, Insettable, View.OnTouchListener {
 
     private final ActivityContext mLauncher;
     private final AllAppsSearchBarController mSearchBarController;
@@ -63,6 +70,13 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
     // The amount of pixels to shift down and overlap with the rest of the content.
     private final int mContentOverlap;
+    private final int searchSideMargin;
+
+    private Drawable mIconStart;
+    private Drawable mIconEnd;
+
+    private boolean mHasGoogleApp = false;
+    private boolean mHasLensApp = false;
 
     public AppsSearchContainerLayout(Context context) {
         this(context, null);
@@ -81,22 +95,72 @@ public class AppsSearchContainerLayout extends ExtendedEditText
         mSearchQueryBuilder = new SpannableStringBuilder();
         Selection.setSelection(mSearchQueryBuilder, 0);
 
-        mContentOverlap =
-                getResources().getDimensionPixelSize(R.dimen.all_apps_search_bar_content_overlap);
+        mContentOverlap = getResources().getDimensionPixelSize(R.dimen.all_apps_search_bar_content_overlap);
+        searchSideMargin = getResources().getDimensionPixelSize(R.dimen.all_apps_search_bar_margin_side);
+
+        checkInstalledPackages();
+
+        refreshIcons();
+
+        setOnTouchListener(this);
+    }
+
+    private void checkInstalledPackages() {
+        PackageManager pm = getContext().getPackageManager();
+        try {
+            // Check for Google App package
+            pm.getPackageInfo("com.google.android.googlequicksearchbox", 0);
+            mHasGoogleApp = true;
+            mHasLensApp = true;
+        } catch (PackageManager.NameNotFoundException e) {
+            mHasGoogleApp = false;
+            mHasLensApp = false;
+        }
+    }
+
+    private void refreshIcons() {
+        Context ctx = getContext();
+
+        if (!mHasGoogleApp) {
+            Drawable searchIcon = ContextCompat.getDrawable(ctx, R.drawable.ic_allapps_search);
+            setCompoundDrawablesRelativeWithIntrinsicBounds(searchIcon, null, null, null);
+            
+            mIconStart = searchIcon; 
+            mIconEnd = null;
+            return;
+        }
+
+        boolean isDockThemed = ThemeManager.INSTANCE.get(getContext()).isMonoThemeEnabled();
+
+        if (!isDockThemed) {
+            mIconStart = ContextCompat.getDrawable(ctx, R.drawable.ic_super_g_color);
+            mIconEnd = ContextCompat.getDrawable(ctx, R.drawable.ic_lens_color);
+        } else {
+            mIconStart = ContextCompat.getDrawable(ctx, R.drawable.ic_super_g_themed);
+            mIconEnd = ContextCompat.getDrawable(ctx, R.drawable.ic_lens_themed);
+        }
+
+        setCompoundDrawablesRelativeWithIntrinsicBounds(mIconStart, null, mIconEnd, null);
     }
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        if(mAppsView != null)
+        if (mAppsView != null)
             mAppsView.getAppsStore().addUpdateListener(this);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        if(mAppsView != null)
+        if (mAppsView != null)
             mAppsView.getAppsStore().removeUpdateListener(this);
+    }
+
+    @Override
+    protected void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        refreshIcons();
     }
 
     @Override
@@ -104,17 +168,21 @@ public class AppsSearchContainerLayout extends ExtendedEditText
         // Update the width to match the grid padding
         DeviceProfile dp = mLauncher.getDeviceProfile();
         int myRequestedWidth = getSize(widthMeasureSpec);
-        int rowWidth = myRequestedWidth - mAppsView.getActiveRecyclerView().getPaddingLeft()
-                - mAppsView.getActiveRecyclerView().getPaddingRight();
 
-        int cellWidth = DeviceProfile.calculateCellWidth(rowWidth,
-                dp.getWorkspaceIconProfile().getCellLayoutBorderSpacePx().x, dp.numShownHotseatIcons);
-        int iconVisibleSize =
-                Math.round(ICON_VISIBLE_AREA_FACTOR * dp.getWorkspaceIconProfile().getIconSizePx());
-        int iconPadding = cellWidth - iconVisibleSize;
+        if (mAppsView != null && mAppsView.getActiveRecyclerView() != null) {
+            int rowWidth = myRequestedWidth - mAppsView.getActiveRecyclerView().getPaddingLeft()
+                    - mAppsView.getActiveRecyclerView().getPaddingRight();
 
-        int myWidth = rowWidth - iconPadding + getPaddingLeft() + getPaddingRight();
-        super.onMeasure(makeMeasureSpec(myWidth, EXACTLY), heightMeasureSpec);
+            int cellWidth = DeviceProfile.calculateCellWidth(rowWidth,
+                    dp.getWorkspaceIconProfile().getCellLayoutBorderSpacePx().x, dp.numShownHotseatIcons);
+            int iconVisibleSize = Math.round(ICON_VISIBLE_AREA_FACTOR * dp.getWorkspaceIconProfile().getIconSizePx());
+            int iconPadding = cellWidth - iconVisibleSize;
+
+            int myWidth = rowWidth - iconPadding + getPaddingLeft() + getPaddingRight();
+            super.onMeasure(makeMeasureSpec(myWidth, EXACTLY), heightMeasureSpec);
+        } else {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        }
     }
 
     @Override
@@ -123,13 +191,81 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
         // Shift the widget horizontally so that its centered in the parent (b/63428078)
         View parent = (View) getParent();
-        int availableWidth = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
-        int myWidth = right - left;
-        int expectedLeft = parent.getPaddingLeft() + (availableWidth - myWidth) / 2;
-        int shift = expectedLeft - left;
-        setTranslationX(shift);
+        if (parent != null) {
+            int availableWidth = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
+            int myWidth = right - left;
+            int expectedLeft = parent.getPaddingLeft() + (availableWidth - myWidth) / 2;
+            int shift = expectedLeft - left;
+            setTranslationX(shift);
+        }
 
         offsetTopAndBottom(mContentOverlap);
+    }
+
+    @Override
+    public boolean onTouch(View v, MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_CANCEL || event.getAction() == MotionEvent.ACTION_UP) {
+            animate().alpha(1.0f).setDuration(150).start();
+        }
+
+        if (event.getAction() == MotionEvent.ACTION_UP) {
+            float touchX = event.getX();
+            int width = getWidth();
+            boolean isRtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
+
+            int startDrawableWidth = mIconStart != null ? mIconStart.getBounds().width() : 0;
+
+            if (mHasGoogleApp && startDrawableWidth > 0) {
+                int startClickArea = getPaddingStart() + startDrawableWidth + searchSideMargin;
+                boolean clickedStart = isRtl ? touchX >= (width - startClickArea) : touchX <= startClickArea;
+
+                if (clickedStart) {
+                    performClickFeedback();
+                    startGoogleApp();
+                    return true;
+                }
+            }
+
+            int endDrawableWidth = mIconEnd != null ? mIconEnd.getBounds().width() : 0;
+            
+            if (mHasLensApp && endDrawableWidth > 0) {
+                int endClickArea = getPaddingEnd() + endDrawableWidth + searchSideMargin;
+                boolean clickedEnd = isRtl ? touchX <= endClickArea : touchX >= (width - endClickArea);
+
+                if (clickedEnd) {
+                    performClickFeedback();
+                    startLensApp();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void performClickFeedback() {
+        this.setAlpha(0.5f);
+        this.animate().alpha(1.0f).setDuration(200).start();
+    }
+
+    private void startGoogleApp() {
+        Intent gIntent = getContext().getPackageManager()
+                .getLaunchIntentForPackage("com.google.android.googlequicksearchbox");
+        if (gIntent != null) {
+            gIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            mLauncher.startActivitySafely(this, gIntent, null);
+        }
+    }
+
+    private void startLensApp() {
+        Intent lensIntent = new Intent();
+        lensIntent.setAction(Intent.ACTION_VIEW)
+                .setComponent(new ComponentName(
+                        "com.google.android.googlequicksearchbox",
+                        "com.google.android.apps.search.lens.LensExportedActivity"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .setData(Uri.parse("google://lens"))
+                .putExtra("LensHomescreenShortcut", true);
+        mLauncher.startActivitySafely(this, lensIntent, null);
     }
 
     @Override
@@ -176,7 +312,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
 
     @Override
     public void onSearchResult(String query, ArrayList<AdapterItem> items) {
-        if (query.equalsIgnoreCase(getContext().getString(R.string.private_space_label))) {
+        if (query != null && query.equalsIgnoreCase(getContext().getString(R.string.private_space_label))) {
             privateSpaceQuery();
             return;
         }
@@ -197,7 +333,7 @@ public class AppsSearchContainerLayout extends ExtendedEditText
     @Override
     public void setInsets(Rect insets) {
         MarginLayoutParams mlp = (MarginLayoutParams) getLayoutParams();
-        mlp.topMargin = insets.top;
+        mlp.topMargin = getResources().getDimensionPixelSize(R.dimen.all_apps_search_bar_margin_top);
         requestLayout();
     }
 
